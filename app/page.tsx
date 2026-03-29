@@ -14,6 +14,14 @@ export default function Home() {
         </div>
       </header>
       <ProductCatalog />
+      <footer className="border-t border-zinc-200 bg-white/80 px-4 py-5 backdrop-blur dark:border-zinc-800 dark:bg-zinc-950/80 md:px-6">
+        <div className="mx-auto max-w-6xl py-4">
+          <p className="text-sm text-zinc-500 dark:text-zinc-400">
+            Sepulveda Olvera Jesus Enoel 6CPGM
+          </p>
+        </div>
+      </footer>
     </div>
+    
   );
 }
