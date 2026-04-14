@@ -1,20 +1,25 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import type { Product } from "@/types/product";
+import { createBrowserClient, PRODUCTS_TABLE } from "@/lib/supabase/client";
+import { rowToProduct } from "@/lib/supabase/mapProduct";
 
-const priceFormatter = new Intl.NumberFormat("es-AR", {
+const priceFormatter = new Intl.NumberFormat("es-MX", {
   style: "currency",
-  currency: "ARS",
+  currency: "MXN",
   minimumFractionDigits: 2,
 });
 
 export function ProductCatalog() {
   const [products, setProducts] = useState<Product[]>([]);
+  const [listLoading, setListLoading] = useState(true);
+  const [listError, setListError] = useState<string | null>(null);
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [priceInput, setPriceInput] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
 
   const resetForm = useCallback(() => {
     setName("");
@@ -23,7 +28,42 @@ export function ProductCatalog() {
     setError(null);
   }, []);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  useEffect(() => {
+    let cancelled = false;
+
+    async function load() {
+      setListLoading(true);
+      setListError(null);
+      try {
+        const supabase = createBrowserClient();
+        const { data, error: fetchError } = await supabase
+          .from(PRODUCTS_TABLE)
+          .select("id, name, description, price, created_at")
+          .order("created_at", { ascending: false });
+
+        if (fetchError) {
+          setListError(fetchError.message);
+          return;
+        }
+        if (!cancelled && data) {
+          setProducts(data.map((row) => rowToProduct(row)));
+        }
+      } catch (e) {
+        const message =
+          e instanceof Error ? e.message : "No se pudo conectar con Supabase.";
+        if (!cancelled) setListError(message);
+      } finally {
+        if (!cancelled) setListLoading(false);
+      }
+    }
+
+    void load();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const trimmedName = name.trim();
     const trimmedDescription = description.trim();
@@ -42,16 +82,35 @@ export function ProductCatalog() {
       return;
     }
 
-    setProducts((prev) => [
-      {
-        id: crypto.randomUUID(),
-        name: trimmedName,
-        description: trimmedDescription,
-        price,
-      },
-      ...prev,
-    ]);
-    resetForm();
+    setError(null);
+    setSubmitting(true);
+    try {
+      const supabase = createBrowserClient();
+      const { data, error: insertError } = await supabase
+        .from(PRODUCTS_TABLE)
+        .insert({
+          name: trimmedName,
+          description: trimmedDescription,
+          price,
+        })
+        .select("id, name, description, price, created_at")
+        .single();
+
+      if (insertError) {
+        setError(insertError.message);
+        return;
+      }
+      if (data) {
+        setProducts((prev) => [rowToProduct(data), ...prev]);
+        resetForm();
+      }
+    } catch (e) {
+      const message =
+        e instanceof Error ? e.message : "Error al guardar el producto.";
+      setError(message);
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (
@@ -79,7 +138,8 @@ export function ProductCatalog() {
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 autoComplete="off"
-                className="rounded-lg border border-zinc-300 bg-white px-3 py-2 text-zinc-900 outline-none ring-zinc-400 transition placeholder:text-zinc-400 focus:border-zinc-500 focus:ring-2 dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-100 dark:focus:border-zinc-500"
+                disabled={submitting}
+                className="rounded-lg border border-zinc-300 bg-white px-3 py-2 text-zinc-900 outline-none ring-zinc-400 transition placeholder:text-zinc-400 focus:border-zinc-500 focus:ring-2 disabled:opacity-60 dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-100 dark:focus:border-zinc-500"
                 placeholder="Ej: Auriculares Bluetooth"
               />
             </div>
@@ -96,7 +156,8 @@ export function ProductCatalog() {
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
                 rows={4}
-                className="resize-y rounded-lg border border-zinc-300 bg-white px-3 py-2 text-zinc-900 outline-none ring-zinc-400 transition placeholder:text-zinc-400 focus:border-zinc-500 focus:ring-2 dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-100 dark:focus:border-zinc-500"
+                disabled={submitting}
+                className="resize-y rounded-lg border border-zinc-300 bg-white px-3 py-2 text-zinc-900 outline-none ring-zinc-400 transition placeholder:text-zinc-400 focus:border-zinc-500 focus:ring-2 disabled:opacity-60 dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-100 dark:focus:border-zinc-500"
                 placeholder="Características, modelo, garantía…"
               />
             </div>
@@ -114,7 +175,8 @@ export function ProductCatalog() {
                 inputMode="decimal"
                 value={priceInput}
                 onChange={(e) => setPriceInput(e.target.value)}
-                className="rounded-lg border border-zinc-300 bg-white px-3 py-2 text-zinc-900 outline-none ring-zinc-400 transition placeholder:text-zinc-400 focus:border-zinc-500 focus:ring-2 dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-100 dark:focus:border-zinc-500"
+                disabled={submitting}
+                className="rounded-lg border border-zinc-300 bg-white px-3 py-2 text-zinc-900 outline-none ring-zinc-400 transition placeholder:text-zinc-400 focus:border-zinc-500 focus:ring-2 disabled:opacity-60 dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-100 dark:focus:border-zinc-500"
                 placeholder="0,00"
               />
             </div>
@@ -130,9 +192,10 @@ export function ProductCatalog() {
 
             <button
               type="submit"
-              className="mt-1 inline-flex items-center justify-center rounded-lg bg-zinc-900 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-zinc-800 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-zinc-900 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-200 dark:focus-visible:outline-zinc-100"
+              disabled={submitting}
+              className="mt-1 inline-flex items-center justify-center rounded-lg bg-zinc-900 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-zinc-800 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-zinc-900 disabled:cursor-not-allowed disabled:opacity-60 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-200 dark:focus-visible:outline-zinc-100"
             >
-              Agregar producto
+              {submitting ? "Guardando…" : "Agregar producto"}
             </button>
           </form>
         </div>
@@ -144,12 +207,24 @@ export function ProductCatalog() {
             Productos dados de alta
           </h2>
           <p className="mb-6 text-sm text-zinc-500 dark:text-zinc-400">
-            {products.length === 0
-              ? "Todavía no hay productos. Agregá el primero con el formulario."
-              : `${products.length} producto${products.length === 1 ? "" : "s"} en la lista.`}
+            {listLoading
+              ? "Cargando lista…"
+              : products.length === 0
+                ? "Todavía no hay productos. Agregá el primero con el formulario."
+                : `${products.length} producto${products.length === 1 ? "" : "s"} en la lista.`}
           </p>
 
-          {products.length === 0 ? (
+          {listError ? (
+            <p className="text-sm text-red-600 dark:text-red-400" role="alert">
+              {listError}
+            </p>
+          ) : listLoading ? (
+            <div className="flex min-h-[200px] flex-col items-center justify-center rounded-xl border border-dashed border-zinc-300 bg-white/60 py-12 text-center dark:border-zinc-700 dark:bg-zinc-950/60">
+              <p className="max-w-xs text-sm text-zinc-500 dark:text-zinc-400">
+                Cargando productos…
+              </p>
+            </div>
+          ) : products.length === 0 ? (
             <div className="flex min-h-[200px] flex-col items-center justify-center rounded-xl border border-dashed border-zinc-300 bg-white/60 py-12 text-center dark:border-zinc-700 dark:bg-zinc-950/60">
               <p className="max-w-xs text-sm text-zinc-500 dark:text-zinc-400">
                 El listado aparecerá aquí cuando cargues productos.
