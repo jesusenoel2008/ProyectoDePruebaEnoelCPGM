@@ -11,7 +11,7 @@ export function createBrowserClient() {
 
   if (!url || !anonKey) {
     throw new Error(
-      "Definí NEXT_PUBLIC_SUPABASE_URL y NEXT_PUBLIC_SUPABASE_ANON_KEY (o NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY) en .env.local",
+      "",
     );
   }
 
